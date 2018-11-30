@@ -19,6 +19,19 @@ class BandcampBridge extends BridgeAbstract {
 				'name' => 'band',
 				'type' => 'text',
 				'required' => true
+			),
+			'tracks' => array(
+				'name' => 'New tracks',
+				'type' => 'checkbox',
+				'required' => false,
+				'title' => 'Include chagnes to track list',
+			),
+			'limit' => array(
+				'name' => 'limit',
+				'type' => 'number',
+				'required' => true,
+				'title' => 'Check this number of albums for new tracks',
+				'defaultValue' => 3
 			)
 		)
 	);
@@ -43,31 +56,66 @@ class BandcampBridge extends BridgeAbstract {
 			$albumData[$jsObject[1]] = json_decode($jsObject[2]);
 		}
 
+		$albumData['tags'] = array();
+		foreach($html->find('a.tag') as $tag) {
+			$albumData['tags'][] = $tag->plaintext;
+		}
+
 		return (object)$albumData;
 	}
 
-	private function collectArtistData(){
-		$html = getSimpleHTMLDOM($this->getURI() . '/music',
+	private function getSimpleHTMLDOMNewlines($url){
+		return getSimpleHTMLDOM($url,
 			array(),
 			array(),
 			true,
 			true,
 			DEFAULT_TARGET_CHARSET,
 			false); // Don't strip newlines, they're used when parsing album pages
+	}
+
+	private function collectArtistData(){
+		$limit = $this->getInput('limit');
+		$includeNewTracks = $this->getInput('tracks');
+
+		$html = $this->getSimpleHTMLDOMNewlines($this->getURI() . '/music');
 
 		// Album list page, eg. https://tlrvt.bandcamp.com/music
 		$albumData = $html->find('ol.music-grid', 0);
 		if(isset($albumData)) {
-			$albumListJSON = json_decode(htmlspecialchars_decode($albumData->getAttribute('data-initial-values')));
+			$albumListJSON = json_decode(
+				htmlspecialchars_decode(
+					$albumData->getAttribute('data-initial-values')));
+
 			foreach($albumListJSON as $album) {
+				$item = array();
+
 				if(isset($album->artist)) {
 					$albumArtist = $album->artist;
 				} else {
 					$albumArtist = $album->band_name;
 				}
+
 				$albumURI = $this->getURI() . $album->page_url;
 
-				$item = array();
+				if($includeNewTracks) {
+					$albumPageData = $this->parseAlbumPage(
+						$this->getSimpleHTMLDOMNewlines($albumURI));
+
+					$item['categories'] = $albumPageData->tags;
+
+					// As RSS Bridge uses the article URL as GUID, we can add a hash to
+					// the URL to present albums with new tracks as unique articles
+					$hashData = '';
+					foreach($albumPageData->trackinfo as $track) {
+						$hashData .= $track->id;
+					}
+					$albumURI = $this->getURI()
+						. $album->page_url
+						. '#'
+						. hash('md5', $hashData);
+				}
+
 				$item['uri'] = $albumURI;
 
 				$item['author'] = $albumArtist;
@@ -79,27 +127,34 @@ class BandcampBridge extends BridgeAbstract {
 				. $albumArtist
 				. ' - '
 				. $album->title;
+
 				$this->items[] = $item;
+
+				if($limit > 0 && count($this->items) >= $limit) {
+					break;
+				}
 			}
+			return;
 		}
 
 		// Releases page, eg. https://parallelspec.bandcamp.com/releases
-		$albumData = $this->parseAlbumPage($html);
-		if(empty($albumData)) {
+		$albumPageData = $this->parseAlbumPage($html);
+		if(empty($albumPageData)) {
 			returnServerError('No albums found for this artist');
 		} else {
 			$item = array();
-			$item['uri'] = $albumData->url;
+			$item['uri'] = $albumPageData->url;
 
-			$item['author'] = $albumData->artist;
-			$item['title'] = $albumData->artist . ' - ' . $albumData->current->title;
-			$item['timestamp'] = strtotime($albumData->current->publish_date);
+			$item['author'] = $albumPageData->artist;
+			$item['title'] = $albumPageData->artist . ' - ' . $albumPageData->current->title;
+			$item['timestamp'] = strtotime($albumPageData->current->publish_date);
+			$item['categories'] = $albumPageData->tags;
 			$item['content'] = '<img src="https://f4.bcbits.com/img/a'
-			. $albumData->art_id
+			. $albumPageData->art_id
 			. '_2.jpg"/><br/>'
-			. $albumData->artist
+			. $albumPageData->artist
 			. ' - '
-			. $albumData->current->title;
+			. $albumPageData->current->title;
 			$this->items[] = $item;
 		}
 	}
