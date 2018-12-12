@@ -83,7 +83,7 @@ class BandcampBridge extends BridgeAbstract {
 		return null;
 	}
 
-	private function parseReleasePage($html){
+	private function parseReleasePage($html) {
 		foreach($html->find('script[type="text/javascript"]') as $script) {
 			$regex = '/var TralbumData = {(.+?)};/s';
 			if(preg_match($regex, $script->innertext, $matches) > 0) {
@@ -109,7 +109,7 @@ class BandcampBridge extends BridgeAbstract {
 		return (object)$releaseData;
 	}
 
-	private function getSimpleHTMLDOMNewlines($url){
+	private function getSimpleHTMLDOMNewlines($url) {
 		return getSimpleHTMLDOM($url,
 			array(),
 			array(),
@@ -119,7 +119,22 @@ class BandcampBridge extends BridgeAbstract {
 			false); // Don't strip newlines, they're used when parsing release pages
 	}
 
-	private function collectArtistData(){
+	/*
+	 * As RSS Bridge uses the article URL as GUID, we can add a hash to
+	 * the URL to present releases with new tracks as unique articles
+	 */
+	private function appendTrackInfoHash($url, $trackinfo) {
+		$hashData = '';
+		foreach($trackinfo as $track) {
+			$hashData .= $track->id;
+		}
+
+		return $url
+		. '#'
+		. hash('md5', $hashData);
+	}
+
+	private function collectArtistData() {
 		$limit = $this->getInput('limit');
 		$includeNewTracks = $this->getInput('tracks');
 
@@ -149,16 +164,8 @@ class BandcampBridge extends BridgeAbstract {
 
 					$item['categories'] = $releasePageData->tags;
 
-					// As RSS Bridge uses the article URL as GUID, we can add a hash to
-					// the URL to present releases with new tracks as unique articles
-					$hashData = '';
-					foreach($releasePageData->trackinfo as $track) {
-						$hashData .= $track->id;
-					}
-
-					$releaseURI = $releasePageData->url
-						. '#'
-						. hash('md5', $hashData);
+					$releaseURI = $this->appendTrackInfoHash($releasePageData->url,
+						$releasePageData->trackinfo);
 				}
 
 				$item['uri'] = $releaseURI;
@@ -190,16 +197,8 @@ class BandcampBridge extends BridgeAbstract {
 			$item = array();
 
 			if($includeNewTracks === true) {
-				// As RSS Bridge uses the article URL as GUID, we can add a hash to
-				// the URL to present releases with new tracks as unique articles
-				$hashData = '';
-				foreach($releasePageData->trackinfo as $track) {
-					$hashData .= $track->id;
-				}
-
-				$item['uri'] = $releasePageData->url
-					. '#'
-					. hash('md5', $hashData);
+				$item['uri'] = $this->appendTrackInfoHash($releasePageData->url,
+					$releasePageData->trackinfo);
 			} else {
 				$item['uri'] = $releasePageData->url;
 			}
@@ -220,7 +219,7 @@ class BandcampBridge extends BridgeAbstract {
 		}
 	}
 
-	private function collectReleaseData(){
+	private function collectReleaseData() {
 		// Release/album page, eg. https://tlrvt.bandcamp.com/album/classic-waffle
 		$html = $this->getSimpleHTMLDOMNewlines($this->getURI());
 
@@ -232,16 +231,8 @@ class BandcampBridge extends BridgeAbstract {
 
 		$item = array();
 
-		// As RSS Bridge uses the article URL as GUID, we can add a hash to
-		// the URL to present releases with new tracks as unique articles
-		$hashData = '';
-		foreach($releasePageData->trackinfo as $track) {
-			$hashData .= $track->id;
-		}
-
-		$item['uri'] = $releasePageData->url
-			. '#'
-			. hash('md5', $hashData);
+		$item['uri'] = $this->appendTrackInfoHash($releasePageData->url,
+			$releasePageData->trackinfo);
 
 		$item['author'] = $releasePageData->artist;
 		$item['title'] = $releasePageData->artist
@@ -259,43 +250,41 @@ class BandcampBridge extends BridgeAbstract {
 	}
 
 	public function collectData(){
-		if($this->queriedContext === 'By band') {
+		switch($this->queriedContext) {
+		case 'By band':
 			$this->collectArtistData();
 			return;
-		}
-
-		if($this->queriedContext === 'By release') {
+		case 'By release':
 			$this->collectReleaseData();
-			return;
-		}
+		case 'By tag':
+			$html = getSimpleHTMLDOM($this->getURI())
+				or returnServerError('No results for this query.');
 
-		$html = getSimpleHTMLDOM($this->getURI())
-			or returnServerError('No results for this query.');
+			foreach($html->find('li.item') as $release) {
+				$script = $release->find('div.art', 0)->getAttribute('onclick');
+				$uri = ltrim($script, "return 'url(");
+				$uri = rtrim($uri, "')");
 
-		foreach($html->find('li.item') as $release) {
-			$script = $release->find('div.art', 0)->getAttribute('onclick');
-			$uri = ltrim($script, "return 'url(");
-			$uri = rtrim($uri, "')");
+				$item = array();
+				$item['author'] = $release->find('div.itemsubtext', 0)->plaintext
+				. ' - '
+				. $release->find('div.itemtext', 0)->plaintext;
 
-			$item = array();
-			$item['author'] = $release->find('div.itemsubtext', 0)->plaintext
-			. ' - '
-			. $release->find('div.itemtext', 0)->plaintext;
+				$item['title'] = $release->find('div.itemsubtext', 0)->plaintext
+				. ' - '
+				. $release->find('div.itemtext', 0)->plaintext;
 
-			$item['title'] = $release->find('div.itemsubtext', 0)->plaintext
-			. ' - '
-			. $release->find('div.itemtext', 0)->plaintext;
+				$item['content'] = '<img src="'
+				. $uri
+				. '"/><br/>'
+				. $release->find('div.itemsubtext', 0)->plaintext
+				. ' - '
+				. $release->find('div.itemtext', 0)->plaintext;
 
-			$item['content'] = '<img src="'
-			. $uri
-			. '"/><br/>'
-			. $release->find('div.itemsubtext', 0)->plaintext
-			. ' - '
-			. $release->find('div.itemtext', 0)->plaintext;
-
-			$item['id'] = $release->find('a', 0)->getAttribute('href');
-			$item['uri'] = $release->find('a', 0)->getAttribute('href');
-			$this->items[] = $item;
+				$item['id'] = $release->find('a', 0)->getAttribute('href');
+				$item['uri'] = $release->find('a', 0)->getAttribute('href');
+				$this->items[] = $item;
+			}
 		}
 	}
 
@@ -307,7 +296,7 @@ class BandcampBridge extends BridgeAbstract {
 			}
 		case 'By release':
 			if(!is_null($this->getInput('b'))
-				&& !is_null($this->getInput('release'))) {
+			&& !is_null($this->getInput('release'))) {
 				return 'https://'
 				. $this->getInput('b')
 				. '.bandcamp.com/album/'
@@ -332,7 +321,7 @@ class BandcampBridge extends BridgeAbstract {
 			}
 		case 'By release':
 			if(!is_null($this->getInput('b'))
-				&& !is_null($this->getInput('release'))) {
+			&& !is_null($this->getInput('release'))) {
 				return $this->getInput('b')
 				. ' - '
 				. $this->getInput('release')
