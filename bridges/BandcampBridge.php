@@ -34,6 +34,18 @@ class BandcampBridge extends BridgeAbstract {
 				'title' => 'Number of releases to return',
 				'defaultValue' => 5
 			)
+		),
+		'By release' => array(
+			'b' => array(
+				'name' => 'band',
+				'type' => 'text',
+				'required' => true
+			),
+			'release' => array(
+				'name' => 'release',
+				'type' => 'text',
+				'required' => true
+			)
 		)
 	);
 
@@ -43,6 +55,14 @@ class BandcampBridge extends BridgeAbstract {
 
 	public function detectParameters($url) {
 		$params = array();
+
+		// By release
+		$regex = '/^(https?:\/\/)?([^\/.&?\n]+?)\.bandcamp\.com\/album\/([^\/.&?\n]+)/';
+		if(preg_match($regex, $url, $matches) > 0) {
+			$params['b'] = urldecode($matches[2]);
+			$params['release'] = urldecode($matches[3]);
+			return $params;
+		}
 
 		// By band
 		$regex = '/^(https?:\/\/)?([^\/.&?\n]+?)\.bandcamp\.com/';
@@ -200,9 +220,52 @@ class BandcampBridge extends BridgeAbstract {
 		}
 	}
 
+	private function collectReleaseData(){
+		// Release/album page, eg. https://tlrvt.bandcamp.com/album/classic-waffle
+		$html = $this->getSimpleHTMLDOMNewlines($this->getURI());
+
+		$releasePageData = $this->parseReleasePage($html);
+
+		if(empty($releasePageData)) {
+			returnServerError('Could not find the specified release');
+		}
+
+		$item = array();
+
+		// As RSS Bridge uses the article URL as GUID, we can add a hash to
+		// the URL to present releases with new tracks as unique articles
+		$hashData = '';
+		foreach($releasePageData->trackinfo as $track) {
+			$hashData .= $track->id;
+		}
+
+		$item['uri'] = $releasePageData->url
+			. '#'
+			. hash('md5', $hashData);
+
+		$item['author'] = $releasePageData->artist;
+		$item['title'] = $releasePageData->artist
+		. ' - '
+		. $releasePageData->current->title;
+		$item['timestamp'] = strtotime($releasePageData->current->publish_date);
+		$item['categories'] = $releasePageData->tags;
+		$item['content'] = '<img src="https://f4.bcbits.com/img/a'
+		. $releasePageData->art_id
+		. '_2.jpg"/><br/>'
+		. $releasePageData->artist
+		. ' - '
+		. $releasePageData->current->title;
+		$this->items[] = $item;
+	}
+
 	public function collectData(){
 		if($this->queriedContext === 'By band') {
 			$this->collectArtistData();
+			return;
+		}
+
+		if($this->queriedContext === 'By release') {
+			$this->collectReleaseData();
 			return;
 		}
 
@@ -242,6 +305,14 @@ class BandcampBridge extends BridgeAbstract {
 			if(!is_null($this->getInput('band'))) {
 				return 'https://' . $this->getInput('band') . '.bandcamp.com';
 			}
+		case 'By release':
+			if(!is_null($this->getInput('b'))
+				&& !is_null($this->getInput('release'))) {
+				return 'https://'
+				. $this->getInput('b')
+				. '.bandcamp.com/album/'
+				. $this->getInput('release');
+			}
 		case 'By tag':
 			if(!is_null($this->getInput('tag'))) {
 				return self::URI
@@ -258,6 +329,14 @@ class BandcampBridge extends BridgeAbstract {
 		case 'By band':
 			if(!is_null($this->getInput('band'))) {
 				return $this->getInput('band') . ' - Bandcamp Artist';
+			}
+		case 'By release':
+			if(!is_null($this->getInput('b'))
+				&& !is_null($this->getInput('release'))) {
+				return $this->getInput('b')
+				. ' - '
+				. $this->getInput('release')
+				. ' - Bandcamp Release';
 			}
 		case 'By tag':
 			if(!is_null($this->getInput('tag'))) {
