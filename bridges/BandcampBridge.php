@@ -49,6 +49,8 @@ class BandcampBridge extends BridgeAbstract {
 		)
 	);
 
+	private $feedName;
+
 	public function getIcon() {
 		return 'https://s4.bcbits.com/img/bc_favicon.ico';
 	}
@@ -140,6 +142,8 @@ class BandcampBridge extends BridgeAbstract {
 
 		$html = $this->getSimpleHTMLDOMNewlines($this->getURI() . '/music');
 
+		$this->feedName = $html->find('head meta[name=title]', 0)->content;
+
 		// Release list page, eg. https://tlrvt.bandcamp.com/music
 		$releaseData = $html->find('ol.music-grid', 0);
 		if(isset($releaseData)) {
@@ -222,6 +226,8 @@ class BandcampBridge extends BridgeAbstract {
 	private function collectReleaseData() {
 		// Release/album page, eg. https://tlrvt.bandcamp.com/album/classic-waffle
 		$html = $this->getSimpleHTMLDOMNewlines($this->getURI());
+
+		$this->feedName = $html->find('head meta[name=title]', 0)->content;
 
 		$releasePageData = $this->parseReleasePage($html);
 
@@ -316,11 +322,15 @@ class BandcampBridge extends BridgeAbstract {
 	public function getName(){
 		switch($this->queriedContext) {
 		case 'By band':
-			if(!is_null($this->getInput('band'))) {
+			if(isset($this->feedName)) {
+				return $this->feedName . ' - Bandcamp Artist';
+			} elseif(!is_null($this->getInput('band'))) {
 				return $this->getInput('band') . ' - Bandcamp Artist';
 			}
 		case 'By release':
-			if(!is_null($this->getInput('b'))
+			if(isset($this->feedName)) {
+				return $this->feedName . ' - Bandcamp Release';
+			} elseif(!is_null($this->getInput('b'))
 			&& !is_null($this->getInput('release'))) {
 				return $this->getInput('b')
 				. ' - '
