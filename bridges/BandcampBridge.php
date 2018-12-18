@@ -74,7 +74,6 @@ class BandcampBridge extends BridgeAbstract {
 			return $params;
 		}
 
-		var_dump($url);
 		// By tag
 		$regex = '/^(https?:\/\/)?bandcamp\.com\/tag\/([^\/.&?\n]+)/';
 		if(preg_match($regex, $url, $matches) > 0) {
