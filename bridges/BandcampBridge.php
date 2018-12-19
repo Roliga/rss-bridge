@@ -177,6 +177,7 @@ class BandcampBridge extends BridgeAbstract {
 				$item['author'] = $releaseArtist;
 				$item['title'] = $releaseArtist . ' - ' . $release->title;
 				$item['timestamp'] = strtotime($release->publish_date);
+				$item['categories'][] = $releaseArtist;
 				$item['content'] = '<img src="https://f4.bcbits.com/img/a'
 				. $release->art_id
 				. '_2.jpg"/><br/>'
@@ -213,6 +214,7 @@ class BandcampBridge extends BridgeAbstract {
 			. $releasePageData->current->title;
 			$item['timestamp'] = strtotime($releasePageData->current->publish_date);
 			$item['categories'] = $releasePageData->tags;
+			$item['categories'][] = $releasePageData->artist;
 			$item['content'] = '<img src="https://f4.bcbits.com/img/a'
 			. $releasePageData->art_id
 			. '_2.jpg"/><br/>'
@@ -246,6 +248,7 @@ class BandcampBridge extends BridgeAbstract {
 		. $releasePageData->current->title;
 		$item['timestamp'] = strtotime($releasePageData->current->publish_date);
 		$item['categories'] = $releasePageData->tags;
+		$item['categories'][] = $releasePageData->artist;
 		$item['content'] = '<img src="https://f4.bcbits.com/img/a'
 		. $releasePageData->art_id
 		. '_2.jpg"/><br/>'
