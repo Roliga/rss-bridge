@@ -159,7 +159,8 @@ class BandcampBridge extends BridgeAbstract {
 					$releaseArtist = $release->band_name;
 				}
 
-				$releaseURI = $this->getURI() . $release->page_url;
+				$releaseURI = ($release->page_url[0] === '/' ? $this->getURI() : '')
+					. $release->page_url;
 
 				if($includeNewTracks === true) {
 					$releasePageData = $this->parseReleasePage(
