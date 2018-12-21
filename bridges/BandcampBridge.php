@@ -151,7 +151,18 @@ class BandcampBridge extends BridgeAbstract {
 					$releaseData->getAttribute('data-initial-values')));
 
 			foreach($releaseListJSON as $release) {
-				$item = array();
+				if($limit > 0 && count($this->items) >= $limit) {
+					break;
+				}
+
+				$releaseURI = ($release->page_url[0] === '/' ? $this->getURI() : '')
+					. $release->page_url;
+
+				if($includeNewTracks === true) {
+					$this->collectReleaseData(
+						$this->getSimpleHTMLDOMNewlines($releaseURI));
+					continue;
+				}
 
 				if(isset($release->artist)) {
 					$releaseArtist = $release->artist;
@@ -159,18 +170,7 @@ class BandcampBridge extends BridgeAbstract {
 					$releaseArtist = $release->band_name;
 				}
 
-				$releaseURI = ($release->page_url[0] === '/' ? $this->getURI() : '')
-					. $release->page_url;
-
-				if($includeNewTracks === true) {
-					$releasePageData = $this->parseReleasePage(
-						$this->getSimpleHTMLDOMNewlines($releaseURI));
-
-					$item['categories'] = $releasePageData->tags;
-
-					$releaseURI = $this->appendTrackInfoHash($releasePageData->url,
-						$releasePageData->trackinfo);
-				}
+				$item = array();
 
 				$item['uri'] = $releaseURI;
 
@@ -186,61 +186,21 @@ class BandcampBridge extends BridgeAbstract {
 				. $release->title;
 
 				$this->items[] = $item;
-
-				if($limit > 0 && count($this->items) >= $limit) {
-					break;
-				}
 			}
-			return;
-		}
-
-		// Releases page, eg. https://parallelspec.bandcamp.com/releases
-		$releasePageData = $this->parseReleasePage($html);
-		if(empty($releasePageData)) {
-			returnServerError('No releases found for this artist');
 		} else {
-			$item = array();
-
-			if($includeNewTracks === true) {
-				$item['uri'] = $this->appendTrackInfoHash($releasePageData->url,
-					$releasePageData->trackinfo);
-			} else {
-				$item['uri'] = $releasePageData->url;
-			}
-
-			$item['author'] = $releasePageData->artist;
-			$item['title'] = $releasePageData->artist
-			. ' - '
-			. $releasePageData->current->title;
-			$item['timestamp'] = strtotime($releasePageData->current->publish_date);
-			$item['categories'] = $releasePageData->tags;
-			$item['categories'][] = $releasePageData->artist;
-			$item['content'] = '<img src="https://f4.bcbits.com/img/a'
-			. $releasePageData->art_id
-			. '_2.jpg"/><br/>'
-			. $releasePageData->artist
-			. ' - '
-			. $releasePageData->current->title;
-			$this->items[] = $item;
+			// Releases page, eg. https://parallelspec.bandcamp.com/releases
+			collectArtistData($html);
 		}
 	}
 
-	private function collectReleaseData() {
-		// Release/album page, eg. https://tlrvt.bandcamp.com/album/classic-waffle
-		$html = $this->getSimpleHTMLDOMNewlines($this->getURI());
-
-		$this->feedName = $html->find('head meta[name=title]', 0)->content;
-
+	private function collectReleaseData($html) {
 		$releasePageData = $this->parseReleasePage($html);
 
 		if(empty($releasePageData)) {
-			returnServerError('Could not find the specified release');
+			returnServerError('Could not find release');
 		}
 
 		$item = array();
-
-		$item['uri'] = $this->appendTrackInfoHash($releasePageData->url,
-			$releasePageData->trackinfo);
 
 		$item['author'] = $releasePageData->artist;
 		$item['title'] = $releasePageData->artist
@@ -251,10 +211,36 @@ class BandcampBridge extends BridgeAbstract {
 		$item['categories'][] = $releasePageData->artist;
 		$item['content'] = '<img src="https://f4.bcbits.com/img/a'
 		. $releasePageData->art_id
-		. '_2.jpg"/><br/>'
+		. '_2.jpg"/><p>'
 		. $releasePageData->artist
 		. ' - '
-		. $releasePageData->current->title;
+		. $releasePageData->current->title
+		. '</p><ol>';
+
+		$hashData = '';
+		foreach($releasePageData->trackinfo as $track) {
+			$hashData .= $track->id;
+
+			$item['content'] .= '<li><a href="https://'
+				. parse_url($releasePageData->url, PHP_URL_HOST)
+				. $track->title_link
+				. '">'
+				. $track->title
+				. '</a></li>';
+
+			$item['enclosures'][] = $track->file->{'mp3-128'};
+		}
+
+		$item['content'] .= '</ol>';
+
+		/*
+		 * As RSS Bridge uses the article URL as GUID, we can add a hash to
+		 * the URL to present releases with new tracks as unique articles
+		 */
+		$item['uri'] = $releasePageData->url
+			. '#'
+			. hash('md5', $hashData);
+
 		$this->items[] = $item;
 	}
 
@@ -264,7 +250,10 @@ class BandcampBridge extends BridgeAbstract {
 			$this->collectArtistData();
 			return;
 		case 'By release':
-			$this->collectReleaseData();
+			// Release/album page, eg. https://tlrvt.bandcamp.com/album/classic-waffle
+			$html = $this->getSimpleHTMLDOMNewlines($this->getURI());
+			$this->feedName = $html->find('head meta[name=title]', 0)->content;
+			$this->collectReleaseData($html);
 		case 'By tag':
 			$html = getSimpleHTMLDOM($this->getURI())
 				or returnServerError('No results for this query.');
