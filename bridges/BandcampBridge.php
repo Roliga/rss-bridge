@@ -227,8 +227,6 @@ class BandcampBridge extends BridgeAbstract {
 				. '">'
 				. $track->title
 				. '</a></li>';
-
-			$item['enclosures'][] = $track->file->{'mp3-128'};
 		}
 
 		$item['content'] .= '</ol>';
