@@ -28,7 +28,7 @@ final class Configuration {
 	 *
 	 * @todo Replace this property by a constant.
 	 */
-	public static $VERSION = 'dev.2019-09-12';
+	public static $VERSION = 'dev.2020-02-26';
 
 	/**
 	 * Holds the configuration data.
