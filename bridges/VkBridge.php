@@ -355,7 +355,7 @@ class VkBridge extends BridgeAbstract
 
 	private function getTitle($content)
 	{
-		preg_match('/^["\w\ \p{Cyrillic}\(\)\?#«»-]+/mu', htmlspecialchars_decode($content), $result);
+		preg_match('/^["\w\ \p{L}\(\)\?#«»-]+/mu', htmlspecialchars_decode($content), $result);
 		if (count($result) == 0) return 'untitled';
 		return $result[0];
 	}
@@ -423,11 +423,11 @@ class VkBridge extends BridgeAbstract
 			'count' => 200
 		));
 
-		if (isset($result['error'])) return;
-
-		foreach($result['response']['items'] as $item) {
-			$video_id = strval($item['owner_id']) . '_' . strval($item['id']);
-			$this->videos[$video_id]['url'] = $item['player'];
+		if (!isset($result['error'])) {
+			foreach($result['response']['items'] as $item) {
+				$video_id = strval($item['owner_id']) . '_' . strval($item['id']);
+				$this->videos[$video_id]['url'] = $item['player'];
+			}
 		}
 
 		foreach($this->items as &$item) {
